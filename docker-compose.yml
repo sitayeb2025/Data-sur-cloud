@@ -1,0 +1,148 @@
+version: "3.8"
+
+services:
+
+########################
+# POSTGRES (Data Warehouse)
+########################
+  postgres:
+    image: pgvector/pgvector:pg13
+    container_name: postgres_dw
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    networks:
+      - data-network
+
+########################
+# MINIO (Data Lake)
+########################
+  minio:
+    image: minio/minio
+    container_name: minio_lake
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - data-network
+
+########################
+# AIRFLOW INIT
+########################
+  airflow-init:
+    image: apache/airflow:2.7.3
+    container_name: airflow-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres_dw/airflow
+      AIRFLOW__CORE__FERNET_KEY: d60ynQfsD3wf4S1tdEsVQ8-OfysT0sQvW0UH7Tl9SKE=
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+    command: >
+      bash -c "airflow db init &&
+      airflow users create
+      --username admin
+      --password admin
+      --firstname admin
+      --lastname admin
+      --role Admin
+      --email admin@example.com"
+    networks:
+      - data-network
+
+########################
+# AIRFLOW WEBSERVER
+########################
+  airflow-webserver:
+    image: apache/airflow:2.7.3
+    container_name: airflow-webserver
+    depends_on:
+      - postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres_dw/airflow
+      AIRFLOW__CORE__FERNET_KEY: d60ynQfsD3wf4S1tdEsVQ8-OfysT0sQvW0UH7Tl9SKE=
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+    ports:
+      - "8080:8080"
+    command: webserver
+    networks:
+      - data-network
+
+########################
+# AIRFLOW SCHEDULER
+########################
+  airflow-scheduler:
+    image: apache/airflow:2.7.3
+    container_name: airflow-scheduler
+    depends_on:
+      - postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres_dw/airflow
+      AIRFLOW__CORE__FERNET_KEY: d60ynQfsD3wf4S1tdEsVQ8-OfysT0sQvW0UH7Tl9SKE=
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+    command: scheduler
+    networks:
+      - data-network
+
+########################
+# PROMETHEUS
+########################
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - data-network
+
+########################
+# GRAFANA
+########################
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - data-network
+
+########################
+# VOLUMES
+########################
+volumes:
+  postgres_data:
+  grafana_data:
+  minio_data:
+
+networks:
+  data-network:
+    driver: bridge
