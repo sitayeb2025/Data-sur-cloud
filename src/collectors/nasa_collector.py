@@ -1,6 +1,7 @@
 """
 Collecteur de données NASA EONET - Événements naturels
 Récupère les données en temps réel de l'API NASA Earth Observatory Network
+Avec support MinIO Data Lake
 """
 
 import requests
@@ -10,6 +11,10 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement
+load_dotenv()
 
 # Configuration du logging
 logging.basicConfig(
@@ -18,25 +23,50 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Import MinIO (optionnel)
+try:
+    from src.storage.minio_client import MinIOClient
+    MINIO_AVAILABLE = True
+except ImportError:
+    MINIO_AVAILABLE = False
+    logger.warning("⚠ MinIO client non disponible. Utilisation du stockage local uniquement.")
+
 
 class NASAEONETCollector:
     """
     Collecteur pour l'API NASA EONET (Earth Observatory Network)
     API: https://eonet.gsfc.nasa.gov/api/v3/events
+    Supporte MinIO pour le Data Lake
     """
     
     BASE_URL = "https://eonet.gsfc.nasa.gov/api/v3/events"
     
-    def __init__(self, output_dir: str = "data/raw"):
+    def __init__(self, output_dir: str = "data/raw", use_minio: bool = True):
         """
         Initialise le collecteur NASA
         
         Args:
-            output_dir: Répertoire de sortie pour les données brutes
+            output_dir: Répertoire de sortie pour les données brutes (stockage local)
+            use_minio: Activer le stockage MinIO (défaut: True)
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session()
+        
+        # Initialiser MinIO si disponible
+        self.minio_client = None
+        self.use_minio = use_minio and MINIO_AVAILABLE
+        
+        if self.use_minio:
+            try:
+                self.minio_client = MinIOClient()
+                # Créer le bucket si nécessaire
+                self.minio_client.create_bucket('raw-data')
+                logger.info("✓ MinIO activé pour ce collecteur")
+            except Exception as e:
+                logger.warning(f"⚠ Impossible d'initialiser MinIO: {e}. Utilisation du stockage local uniquement.")
+                self.use_minio = False
+                self.minio_client = None
         
     def fetch_events(self, 
                     limit: int = 100,
@@ -139,7 +169,7 @@ class NASAEONETCollector:
     
     def save_raw_data(self, data: Dict) -> str:
         """
-        Sauvegarde les données brutes en JSON
+        Sauvegarde les données brutes en JSON (local + MinIO)
         
         Args:
             data: Données à sauvegarder
@@ -151,10 +181,18 @@ class NASAEONETCollector:
         filename = self.output_dir / f"nasa_events_raw_{timestamp}.json"
         
         try:
+            # Sauvegarde locale
             with open(filename, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             
-            logger.info(f"✓ Données brutes sauvegardées: {filename}")
+            logger.info(f"✓ Données brutes sauvegardées localement: {filename}")
+            
+            # Upload MinIO
+            if self.use_minio and self.minio_client:
+                object_name = f"nasa_events/raw/{timestamp}.json"
+                self.minio_client.upload_json('raw-data', object_name, data)
+                logger.info(f"✓ Données brutes téléchargées sur MinIO: {object_name}")
+            
             return str(filename)
             
         except Exception as e:
@@ -164,7 +202,7 @@ class NASAEONETCollector:
     def save_parsed_data(self, events: List[Dict], 
                         format: str = 'json') -> str:
         """
-        Sauvegarde les données parsées
+        Sauvegarde les données parsées (local + MinIO)
         
         Args:
             events: Liste des événements parsés
@@ -180,6 +218,12 @@ class NASAEONETCollector:
                 filename = self.output_dir / f"nasa_events_parsed_{timestamp}.json"
                 with open(filename, 'w', encoding='utf-8') as f:
                     json.dump(events, f, indent=2, ensure_ascii=False)
+                
+                # Upload MinIO
+                if self.use_minio and self.minio_client:
+                    object_name = f"nasa_events/parsed/{timestamp}.json"
+                    self.minio_client.upload_json('raw-data', object_name, 
+                                                  {'events': events, 'count': len(events)})
                     
             elif format == 'csv':
                 import csv
@@ -190,6 +234,13 @@ class NASAEONETCollector:
                         writer = csv.DictWriter(f, fieldnames=events[0].keys())
                         writer.writeheader()
                         writer.writerows(events)
+                
+                # Upload MinIO
+                if self.use_minio and self.minio_client:
+                    self.minio_client.upload_file('raw-data', 
+                                                  f"nasa_events/parsed/{timestamp}.csv",
+                                                  str(filename),
+                                                  content_type='text/csv')
             
             logger.info(f"✓ Données parsées sauvegardées ({format}): {filename}")
             return str(filename)

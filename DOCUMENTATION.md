@@ -131,7 +131,7 @@ Métriques suivies:
 - Taux de succès du pipeline
 - Utilisation des ressources
 
-## 9. Git & GitHub
+## 9. Git & GitHub  
 
 ```bash
 git clone https://github.com/sitayeb2025/Data-sur-cloud.git
