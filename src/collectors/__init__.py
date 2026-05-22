@@ -1,1 +1,0 @@
-"""Collecteurs de données"""
