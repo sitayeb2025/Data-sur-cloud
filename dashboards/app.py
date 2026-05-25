@@ -52,18 +52,22 @@ def get_style(event_type):
 
 def load_data():
     path = Path("data/processed")
-    files = list(path.glob("events_processed_*.parquet"))
+    files = list(path.glob("events_enriched_*.parquet"))
     if not files:
         return pd.DataFrame()
     latest = max(files, key=lambda x: x.stat().st_mtime)
     df = pd.read_parquet(latest)
-    
-    # La colonne s'appelle severity_score → on la renomme en severity
-    if "severity_score" in df.columns and "severity" not in df.columns:
-        df["severity"] = df["severity_score"]
-    
-    # severity_category existe déjà dans le parquet, on la garde
-    
+
+    # Convertir severity texte → nombre
+    severity_map = {"high": 0.85, "medium": 0.5, "low": 0.2, "unknown": 0.3}
+    if "severity" in df.columns:
+        if df["severity"].dtype == object:
+            df["severity"] = df["severity"].str.lower().map(severity_map).fillna(0.3)
+        df["severity_category"] = pd.cut(
+            df["severity"], bins=[0, 0.33, 0.66, 1.0],
+            labels=["Low", "Medium", "High"]
+        ).astype(str)
+
     for col in ("start_date", "date", "collection_date"):
         if col in df.columns:
             df["date"] = pd.to_datetime(df[col], utc=True, errors="coerce")
