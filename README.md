@@ -1,62 +1,50 @@
-﻿# 🌍 NASA EONET Global Disasters Analytics
+﻿# 🚨 Civil Protection Monitoring System
 
-**Plateforme complète d'analyse des catastrophes naturelles mondiales en temps réel**
+> Surveillance des catastrophes naturelles mondiales — Pipeline ETL Cloud + Dashboard temps réel pour la Protection Civile.
 
-Collecte, transformation et visualisation des données NASA Earth Observatory Network avec 10,000+ événements mondiaux
+![Python](https://img.shields.io/badge/Python-3.10+-blue) 
+![Airflow](https://img.shields.io/badge/Airflow-2.7.3-red)
+ ![Dash](https://img.shields.io/badge/Dash-2.14-green) 
+ ![AWS](https://img.shields.io/badge/AWS-EC2%20Stockholm-yellow) 
+ ![Docker](https://img.shields.io/badge/Docker-Compose-blue)
 
-## 🎯 Résumé
+## 🎯 But
+Collecter automatiquement les données de catastrophes naturelles (NASA EONET + USGS), les transformer via un pipeline ETL orchestré par Airflow, et les visualiser dans un dashboard interactif pour aider la Protection Civile à prioriser ses interventions en temps réel.
 
-✅ **10,000+ événements** naturels (incendies, tremblements de terre, tempêtes)  
-✅ **3 dashboards interactifs** (17 graphiques au total)  
-✅ **Geo-localisés** sur 10 régions mondiales  
-✅ **94.44% qualité** de données  
+## 🏗️ Architecture
+```
+NASA EONET + USGS API  →  Airflow DAG (@daily)  →  MinIO Data Lake  →  PostgreSQL  →  Dashboard Dash
+```
+| Couche | Tech |
+|--------|------|
+| Orchestration | Apache Airflow 2.7.3 |
+| Dashboard | Dash 2.14 + Plotly 5.18 |
+| Data Lake | MinIO (S3-compatible) |
+| Base de données | PostgreSQL 13 |
+| Monitoring | Prometheus + Grafana |
+| Cloud | AWS EC2 — eu-north-1 Stockholm |
+| Conteneurs | Docker Compose (7 containers) |
 
-## 🚀 Démarrage rapide
-
-\\\ash
-# Installation
+## 🚀 Lancement
+```bash
+git clone https://github.com/sitayeb2025/Data-sur-cloud.git && cd Data-sur-cloud
+cp .env.example .env          # configurer les variables
+docker-compose up -d          # démarrer tous les services
 pip install -r requirements.txt
+python clean_and_analyze_data.py   # pipeline complet
+python dashboards/app.py           # dashboard → http://localhost:8050
+```
 
-# Lancez les dashboards (3 terminaux)
-python dashboards/compact_app.py        # Port 8053 - Rapport rapide
-python dashboards/advanced_app.py       # Port 8051 - Exploration avancée
-python dashboards/ultra_advanced_app.py # Port 8052 - Analyse scientifique
-\\\
+## 🔗 Accès aux services
+| Service | URL | Login |
+|---------|-----|-------|
+| Dashboard | http://localhost:8050 | — |
+| Airflow | http://localhost:8080 | admin / admin |
+| MinIO | http://localhost:9001 | admin / password |
+| Grafana | http://localhost:3000 | admin / admin |
+| Prometheus | http://localhost:9090 | — |
 
-## 📊 Dashboards
+> Sur AWS EC2 remplacer `localhost` par l'IP publique. Ports Security Group à ouvrir : `8050` `8080` `9000` `9001` `3000` `9090`
 
-| Dashboard | Port | Graphiques | Cible |
-|-----------|------|-----------|--------|
-| Compact | 8053 | 5 essentiels | Décideurs |
-| Advanced | 8051 | 8 + Filtres | Analystes |
-| Ultra | 8052 | 9 scientifiques | Data Scientists |
-
-**Graphiques inclus:** Carte mondiale, Heatmaps, Timelines, 3D Scatter, Violin Plot, Polar Radar, Correlation Matrix, Sankey, Funnel, et plus...
-
-## 📁 Structure
-
-\\\
-src/              Collecteurs (NASA, USGS) + ETL + Analysis
-data/             Données brutes (JSON) + Traitées (Parquet)
-dashboards/       4 applications Dash interactives
-docker-compose.yml Infrastructure complète
-\\\
-
-## 🔧 Technologies
-
-Python 3.11 • Dash • Plotly • Pandas • Docker • PostgreSQL • MinIO
-
-## 📈 Données
-
-- **Total:** 10,000+ événements
-- **Régions:** 10 (Amérique du Nord, Afrique, Asie, etc.)
-- **Types:** 6 (Incendies, Tremblements de terre, Tempêtes, Inondations, Volcans, Glace)
-- **Période:** Juillet 2024 - Avril 2026
-
-## 📄 Licence
-
-MIT License - Open Source
-
----
-
-🌍 *Plateforme de monitoring des catastrophes naturelles mondiales*
+## 👤 Auteur
+**RYMA SITAYEB** — [github.com/sitayeb2025/Data-sur-cloud](https://github.com/sitayeb2025/Data-sur-cloud) — MIT
