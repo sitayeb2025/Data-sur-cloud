@@ -52,19 +52,18 @@ def get_style(event_type):
 
 def load_data():
     path = Path("data/processed")
-    files = list(path.glob("events_enriched_*.parquet"))
+    files = list(path.glob("events_processed_*.parquet"))
     if not files:
         return pd.DataFrame()
     latest = max(files, key=lambda x: x.stat().st_mtime)
     df = pd.read_parquet(latest)
-    severity_map = {"high": 0.9, "medium": 0.5, "low": 0.2, "unknown": 0.3}
-    if "severity" in df.columns:
-        if df["severity"].dtype == object:
-            df["severity"] = df["severity"].str.lower().map(severity_map).fillna(0.3)
-        df["severity_category"] = pd.cut(
-            df["severity"], bins=[0, 0.33, 0.66, 1.0],
-            labels=["Low", "Medium", "High"]
-        ).astype(str)
+    
+    # La colonne s'appelle severity_score → on la renomme en severity
+    if "severity_score" in df.columns and "severity" not in df.columns:
+        df["severity"] = df["severity_score"]
+    
+    # severity_category existe déjà dans le parquet, on la garde
+    
     for col in ("start_date", "date", "collection_date"):
         if col in df.columns:
             df["date"] = pd.to_datetime(df[col], utc=True, errors="coerce")
@@ -272,9 +271,9 @@ def apply_filters(df, event_types, regions, severity_cats, severity_range):
         df = df[df["region"].isin(regions)]
     if severity_cats and "severity_category" in df.columns:
         df = df[df["severity_category"].isin(severity_cats)]
-    if severity_range and "severity_score" in df.columns:
+    if severity_range and "severity" in df.columns:
         lo, hi = severity_range
-        df = df[(df["severity_score"] >= lo) & (df["severity_score"] <= hi)]
+        df = df[(df["severity"] >= lo) & (df["severity"] <= hi)]
     return df
 
 # =========================================================
@@ -297,7 +296,7 @@ def update_kpis(n, event_types, regions, severity_cats, severity_range):
     total        = len(df)
     ev_types_cnt = df["event_type"].nunique()   if "event_type"    in df.columns else 0
     regions_cnt  = df["region"].nunique()        if "region"        in df.columns else 0
-    avg_sev      = df["severity_score"].mean()   if "severity_score" in df.columns else 0
+    avg_sev      = df["severity"].mean()   if "severity" in df.columns else 0
 
     def card(title, value, color):
         return html.Div(
@@ -330,9 +329,9 @@ def update_kpis(n, event_types, regions, severity_cats, severity_range):
 )
 def alert_gauge(n, event_types, regions, severity_cats, severity_range):
     df = apply_filters(load_data(), event_types, regions, severity_cats, severity_range)
-    if df.empty or "severity_score" not in df.columns:
+    if df.empty or "severity" not in df.columns:
         return go.Figure()
-    avg = df["severity_score"].mean()
+    avg = df["severity"].mean()
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=round(avg, 3),
@@ -365,12 +364,12 @@ def alert_gauge(n, event_types, regions, severity_cats, severity_range):
 def event_region_heatmap(n, event_types, regions, severity_cats, severity_range):
     df = apply_filters(load_data(), event_types, regions, severity_cats, severity_range)
 
-    if df.empty or not {"event_type", "region", "severity_score"}.issubset(df.columns):
+    if df.empty or not {"event_type", "region", "severity"}.issubset(df.columns):
         return go.Figure()
 
     # Top 10 régions les plus actives pour rester lisible
     top_regions = (
-        df.groupby("region")["severity_score"]
+        df.groupby("region")["severity"]
         .count()
         .nlargest(10)
         .index.tolist()
@@ -378,7 +377,7 @@ def event_region_heatmap(n, event_types, regions, severity_cats, severity_range)
     df_heat = df[df["region"].isin(top_regions)]
 
     pivot = (
-        df_heat.groupby(["event_type", "region"])["severity_score"]
+        df_heat.groupby(["event_type", "region"])["severity"]
         .mean()
         .unstack(fill_value=0)
     )
@@ -444,17 +443,17 @@ def event_region_heatmap(n, event_types, regions, severity_cats, severity_range)
 )
 def danger_types(n, event_types, regions, severity_cats, severity_range):
     df = apply_filters(load_data(), event_types, regions, severity_cats, severity_range)
-    if df.empty or not {"event_type","severity_score"}.issubset(df.columns):
+    if df.empty or not {"event_type","severity"}.issubset(df.columns):
         return go.Figure()
-    grp = (df.groupby("event_type")["severity_score"]
+    grp = (df.groupby("event_type")["severity"]
              .mean().sort_values(ascending=False).reset_index())
     fig = px.bar(
-        grp, x="event_type", y="severity_score",
-        color="severity_score",
+        grp, x="event_type", y="severity",
+        color="severity",
         title="🌪️ Most Dangerous Event Types (avg severity)",
         template="plotly_dark",
         color_continuous_scale="Reds",
-        text=grp["severity_score"].map(lambda v: f"{v:.2f}")
+        text=grp["severity"].map(lambda v: f"{v:.2f}")
     )
     fig.update_traces(textposition="outside")
     fig.update_layout(paper_bgcolor=C["bg"], plot_bgcolor=C["bg"],
@@ -482,7 +481,7 @@ def priority_chart(n, event_types, regions, severity_cats, severity_range):
         counts.columns = ["priority", "count"]
     else:
         df = df.copy()
-        df["priority"] = pd.cut(df["severity_score"],
+        df["priority"] = pd.cut(df["severity"],
                                 bins=[0, 0.33, 0.66, 1.0],
                                 labels=["Low", "Medium", "High"])
         counts = df["priority"].value_counts().reset_index()
@@ -511,12 +510,12 @@ def priority_chart(n, event_types, regions, severity_cats, severity_range):
 )
 def top_regions(n, event_types, regions, severity_cats, severity_range):
     df = apply_filters(load_data(), event_types, regions, severity_cats, severity_range)
-    if df.empty or not {"region","severity_score"}.issubset(df.columns):
+    if df.empty or not {"region","severity"}.issubset(df.columns):
         return go.Figure()
     grp = (
         df.groupby("region")
-        .agg(event_count=("severity_score","count"),
-             avg_severity=("severity_score","mean"))
+        .agg(event_count=("severity","count"),
+             avg_severity=("severity","mean"))
         .sort_values("event_count", ascending=False)
         .head(15).reset_index()
     )
@@ -584,7 +583,7 @@ def world_map(n, event_types, regions, severity_cats, severity_range):
         )
     )
 
-    required = {"latitude","longitude","severity_score","event_type"}
+    required = {"latitude","longitude","severity","event_type"}
     if df.empty or not required.issubset(df.columns):
         return fig
 
@@ -595,16 +594,16 @@ def world_map(n, event_types, regions, severity_cats, severity_range):
     df["_color"]  = df["_style_key"].map(lambda k: EVENT_STYLE[k]["color"])
     df["_halo"]   = df["_style_key"].map(lambda k: EVENT_STYLE[k]["halo"])
     df["_symbol"] = df["_style_key"].map(lambda k: EVENT_STYLE[k]["symbol"])
-    df["_size"]      = 3 + df["severity_score"] * 5
+    df["_size"]      = 3 + df["severity"] * 5
     df["_halo_size"] = df["_size"] * 1.6
 
-    sev_label = df["severity_score"].apply(
+    sev_label = df["severity"].apply(
         lambda s: "🔴 High" if s >= 0.66 else ("🟠 Medium" if s >= 0.33 else "🟢 Low")
     )
     df["_hover"] = (
         "<b>" + df["event_type"].str.upper() + "</b><br>"
         + "📍 " + df["region"].astype(str) + "<br>"
-        + "⚠️ Score : " + df["severity_score"].map(lambda v: f"{v:.2f}")
+        + "⚠️ Score : " + df["severity"].map(lambda v: f"{v:.2f}")
         + " — " + sev_label
     )
 
