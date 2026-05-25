@@ -28,7 +28,7 @@ NASA EONET + USGS API  →  Airflow DAG (@daily)  →  MinIO Data Lake  →  Pos
 ## 🚀 Lancement
 ```bash
 git clone https://github.com/sitayeb2025/Data-sur-cloud.git && cd Data-sur-cloud
-cp .env.example .env          # configurer les variables
+python -m venv venv           # Création de l’environnement virtuel Python
 docker-compose up -d          # démarrer tous les services
 pip install -r requirements.txt
 python clean_and_analyze_data.py   # pipeline complet
