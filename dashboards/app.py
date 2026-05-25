@@ -52,12 +52,21 @@ def get_style(event_type):
 
 def load_data():
     path = Path("data/processed")
-    files = list(path.glob("events_processed_*.parquet"))
+    files = list(path.glob("events_enriched_*.parquet"))
     if not files:
         return pd.DataFrame()
     latest = max(files, key=lambda x: x.stat().st_mtime)
     df = pd.read_parquet(latest)
-    # Normalise colonne date → start_date dans ce jeu
+
+    # Créer severity_score numérique depuis la colonne severity textuelle
+    severity_map = {"high": 1.0, "medium": 0.5, "low": 0.1, "unknown": 0.3}
+    if "severity" in df.columns:
+        df["severity_score"] = df["severity"].str.lower().map(severity_map).fillna(0.3)
+        df["severity_category"] = df["severity"].str.lower().map(
+            {"high": "High", "medium": "Medium", "low": "Low", "unknown": "Low"}
+        ).fillna("Low")
+
+    # Normaliser la date
     for col in ("start_date", "date", "collection_date"):
         if col in df.columns:
             df["date"] = pd.to_datetime(df[col], utc=True, errors="coerce")

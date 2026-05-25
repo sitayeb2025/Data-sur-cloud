@@ -31,6 +31,7 @@ git clone https://github.com/sitayeb2025/Data-sur-cloud.git && cd Data-sur-cloud
 python -m venv venv           # Création de l’environnement virtuel Python
 docker-compose up -d          # démarrer tous les services
 pip install -r requirements.txt
+python diagnostic_minio_collecte.py
 python clean_and_analyze_data.py   # pipeline complet
 python dashboards/app.py           # dashboard → http://localhost:8050
 ```
