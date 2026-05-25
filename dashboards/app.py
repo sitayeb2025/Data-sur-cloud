@@ -57,8 +57,6 @@ def load_data():
         return pd.DataFrame()
     latest = max(files, key=lambda x: x.stat().st_mtime)
     df = pd.read_parquet(latest)
-
-    # Convertir severity texte → nombre
     severity_map = {"high": 0.85, "medium": 0.5, "low": 0.2, "unknown": 0.3}
     if "severity" in df.columns:
         if df["severity"].dtype == object:
@@ -67,7 +65,6 @@ def load_data():
             df["severity"], bins=[0, 0.33, 0.66, 1.0],
             labels=["Low", "Medium", "High"]
         ).astype(str)
-
     for col in ("start_date", "date", "collection_date"):
         if col in df.columns:
             df["date"] = pd.to_datetime(df[col], utc=True, errors="coerce")
